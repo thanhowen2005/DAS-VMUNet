@@ -535,7 +535,7 @@ class VSSBlock(nn.Module):
 
 
 class VSSLayer(nn.Module):
-    """ A basic Swin Transformer layer for one stage.
+    """ A stage of visual state space blocks.
     Args:
         dim (int): Number of input channels.
         depth (int): Number of blocks.
@@ -602,10 +602,10 @@ class VSSLayer(nn.Module):
 
 
 # =========================================================================
-# Swin-VMUNet Modules (Inspired by Swin-UMamba, arXiv:2402.03302)
+# DAS-VMUNet decoder modules (adapted from Swin-UMamba, arXiv:2402.03302)
 # Features:
 # 1. Skip Connection: Concat + Linear Projection (prevents feature interference)
-# 2. Decoder: Residual CNN Blocks (Swin-UMamba style) or Mamba Blocks
+# 2. Decoder: Residual convolutional blocks
 # 3. Deep Supervision: Multi-scale auxiliary prediction heads
 # 4. Training Strategy: Pretrained ImageNet Encoder with Freeze/Unfreeze
 # =========================================================================
@@ -657,20 +657,19 @@ class ResidualConvBlock(nn.Module):
         return out.permute(0, 2, 3, 1).contiguous()
 
 
-class Swin_DecoderStage(nn.Module):
+class DecoderStage(nn.Module):
     """
-    Swin-UMamba inspired Decoder Stage:
+    DAS-VMUNet convolutional decoder stage:
     1. PatchExpand2D (spatial 2x upsampling, channel reduction from in_dim -> out_dim)
     2. Concat + Linear Projection (fuses upsampled feature with skip connection)
-    3. Processing Block: ResidualConvBlock (Swin-UMamba standard) or VSSBlock (Swin-UMambaD)
+    3. ResidualConvBlock adapted from Swin-UMamba
     4. Auxiliary Segmentation Head for Deep Supervision
     """
     def __init__(self, in_dim, out_dim, num_classes=1, upsample=PatchExpand2D,
-                 decoder_type='cnn', norm_layer=nn.LayerNorm, d_state=16, drop_path=0.):
+                 norm_layer=nn.LayerNorm):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
-        self.decoder_type = decoder_type
         
         # 1. Upsampling layer
         if upsample is not None:
@@ -683,15 +682,7 @@ class Swin_DecoderStage(nn.Module):
         self.norm_proj = norm_layer(out_dim)
         
         # 3. Decoder processing block
-        if decoder_type == 'cnn':
-            self.block = ResidualConvBlock(in_dim=out_dim, out_dim=out_dim)
-        else:
-            self.block = VSSBlock(
-                hidden_dim=out_dim,
-                drop_path=drop_path,
-                norm_layer=norm_layer,
-                d_state=d_state
-            )
+        self.block = ResidualConvBlock(in_dim=out_dim, out_dim=out_dim)
             
         # 4. Deep supervision auxiliary segmentation head
         self.seg_head = nn.Conv2d(out_dim, num_classes, kernel_size=1)
@@ -724,16 +715,16 @@ class Swin_DecoderStage(nn.Module):
 
 class VSSM(nn.Module):
     """
-    Swin-VMUNet Backbone:
+    DAS-VMUNet backbone:
     Encoder: 4-stage VMamba (VSSM) with ImageNet Pretraining + Freeze/Unfreeze support
     Skip Connections: Concat + Linear Projection
-    Decoder: 3-stage Swin_DecoderStage with PatchExpand2D + Concat + ResidualConvBlock
+    Decoder: 3-stage DecoderStage with PatchExpand2D + Concat + ResidualConvBlock
     Deep Supervision: Multi-scale auxiliary heads at 4 levels
     """
-    def __init__(self, patch_size=4, in_chans=3, num_classes=1, depths=[2, 2, 9, 2], depths_decoder=[2, 9, 2, 2],
-                 dims=[96, 192, 384, 768], dims_decoder=[768, 384, 192, 96], d_state=16, drop_rate=0.,
+    def __init__(self, patch_size=4, in_chans=3, num_classes=1, depths=[2, 2, 9, 2],
+                 dims=[96, 192, 384, 768], d_state=16, drop_rate=0.,
                  attn_drop_rate=0., drop_path_rate=0.2, norm_layer=nn.LayerNorm, patch_norm=True,
-                 use_checkpoint=False, decoder_type='cnn', deep_supervision=True, **kwargs):
+                 use_checkpoint=False, deep_supervision=True):
         super().__init__()
         self.num_classes = num_classes
         self.num_layers = len(depths)
@@ -742,7 +733,6 @@ class VSSM(nn.Module):
         self.embed_dim = dims[0]
         self.num_features = dims[-1]
         self.dims = dims
-        self.decoder_type = decoder_type
         self.deep_supervision = deep_supervision
 
         self.patch_embed = PatchEmbed2D(
@@ -770,25 +760,22 @@ class VSSM(nn.Module):
             )
             self.layers.append(layer)
 
-        # Decoder: 3 stages with Concat + Linear + ResidualConvBlock/Mamba + Deep Supervision
+        # Decoder: 3 stages with Concat + Linear + ResidualConvBlock + Deep Supervision
         # Stage 0: 768 -> 384 (upsample 2x, concat with skip 2 of dim 384)
         # Stage 1: 384 -> 192 (upsample 2x, concat with skip 1 of dim 192)
         # Stage 2: 192 -> 96  (upsample 2x, concat with skip 0 of dim 96)
         self.layers_up = nn.ModuleList([
-            Swin_DecoderStage(
+            DecoderStage(
                 in_dim=dims[3], out_dim=dims[2], num_classes=num_classes,
-                upsample=PatchExpand2D, decoder_type=decoder_type,
-                norm_layer=norm_layer, d_state=d_state
+                upsample=PatchExpand2D, norm_layer=norm_layer
             ),
-            Swin_DecoderStage(
+            DecoderStage(
                 in_dim=dims[2], out_dim=dims[1], num_classes=num_classes,
-                upsample=PatchExpand2D, decoder_type=decoder_type,
-                norm_layer=norm_layer, d_state=d_state
+                upsample=PatchExpand2D, norm_layer=norm_layer
             ),
-            Swin_DecoderStage(
+            DecoderStage(
                 in_dim=dims[1], out_dim=dims[0], num_classes=num_classes,
-                upsample=PatchExpand2D, decoder_type=decoder_type,
-                norm_layer=norm_layer, d_state=d_state
+                upsample=PatchExpand2D, norm_layer=norm_layer
             ),
         ])
 
@@ -824,7 +811,7 @@ class VSSM(nn.Module):
             param.requires_grad = False
         for param in self.layers.parameters():
             param.requires_grad = False
-        print(">>> [Swin-VMUNet] Encoder FROZEN (weights preserved).", flush=True)
+        print(">>> [DAS-VMUNet] Encoder FROZEN (weights preserved).", flush=True)
 
     @torch.no_grad()
     def unfreeze_encoder(self):
@@ -833,7 +820,7 @@ class VSSM(nn.Module):
             param.requires_grad = True
         for param in self.layers.parameters():
             param.requires_grad = True
-        print(">>> [Swin-VMUNet] Encoder UNFROZEN (full fine-tuning).", flush=True)
+        print(">>> [DAS-VMUNet] Encoder UNFROZEN (full fine-tuning).", flush=True)
 
     def forward_features(self, x):
         skip_list = []

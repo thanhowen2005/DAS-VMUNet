@@ -1,4 +1,4 @@
-"""Adapt the original DAMamba Block to Swin-VMUNet's BHWC skip tensors."""
+"""Adapt the original DAMamba Block to DAS-VMUNet's BHWC skip tensors."""
 
 from torch import nn
 
@@ -12,9 +12,9 @@ class DAMambaSkipBlock(nn.Module):
         except ImportError as exc:
             raise ImportError(
                 "DAMamba skip connections require the original DCNv3 and "
-                "selective_scan_cuda_oflex_rh CUDA extensions. Run "
-                "'bash install_damamba.sh' from Swin-VMUNet with the Python "
-                "environment used for training. All extension sources are "
+                "selective_scan_cuda_oflex_rh CUDA extensions. Follow the "
+                "DAMamba extension installation instructions in README.md "
+                "using the training environment. All extension sources are "
                 "included in models/vmunet/damamba_original."
             ) from exc
 

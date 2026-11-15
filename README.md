@@ -1,118 +1,216 @@
-# VM-UNet
-This is the official code repository for "VM-UNet: Vision Mamba UNet for Medical
-Image Segmentation". {[Arxiv Paper](https://arxiv.org/abs/2402.02491)}
+# DAS-VMUNet
+
+## A Deeply Supervised Vision Mamba U-Net with Dynamic Adaptive Scan
+
+**Minh Vu, Owen Nguyen, and Ngoc-Thao Nguyen**  
+Faculty of Information Technology, University of Science, Ho Chi Minh City, Vietnam  
+Vietnam National University, Ho Chi Minh City, Vietnam
 
 ## Abstract
-In the realm of medical image segmentation, both CNN-based and Transformer-based models have been extensively explored. However, CNNs exhibit limitations in long-range modeling capabilities, whereas Transformers are hampered by their quadratic computational complexity. Recently, State Space Models (SSMs), exemplified by Mamba, have emerged as a promising approach. They not only excel in modeling long-range interactions but also maintain a linear computational complexity. In this paper, leveraging state space models, we propose a U-shape architecture model for medical image segmentation, named Vision Mamba UNet (VM-UNet). Specifically, the Visual State Space (VSS) block is introduced as the foundation block to capture extensive contextual information, and an asymmetrical encoder-decoder structure is constructed. We conduct comprehensive experiments on the ISIC17, ISIC18, and Synapse datasets, and the results indicate that VM-UNet performs competitively in medical image segmentation tasks. To our best knowledge, this is the first medical image segmentation model constructed based on the pure SSM-based model. We aim to establish a baseline and provide valuable insights for the future development of more efficient and effective SSM-based segmentation systems.
 
-## 0. Main Environments
+Accurate medical image segmentation requires capturing global contextual information while preserving fine spatial details. Although visual state space models efficiently capture dependencies across distant image regions, integrating multiscale features remains challenging. This paper presents DAS-VMUNet, a deeply supervised Vision Mamba U-Net incorporating Dynamic Adaptive Scan for medical image segmentation. The architecture uses hierarchical visual state space encoding for contextual analysis and convolutional decoding for local feature reconstruction. DAMamba blocks refine features in encoder along skip connections before fusion with the representations of decoder. This refinement aims to preserve useful spatial information in the features passed to the decoder. Deep supervision guides segmentation learning at multiple resolutions during training. Experiments on standard benchmarks, including ISIC17, ISIC18, and Synapse, demonstrate competitive segmentation performance, while using approximately 22.5% fewer parameters than [VM-UNet](https://arxiv.org/abs/2402.02491) in the evaluated skin lesion segmentation configuration. Our code is available at https://github.com/thanhowen2005/DAS-VMUNet.
+
+## Architecture
+
+### Overall architecture
+
+![Overall architecture of DAS-VMUNet: hierarchical VSS encoder, three DAMamba skip pathways, residual convolutional decoder, and auxiliary segmentation heads.](fig/main_architecture.png)
+
+**Figure 1.** VSS encoder, three DAMamba skip pathways, and a CNN decoder with deep supervision.
+
+[Architecture PDF](fig/main_architecture.pdf).
+
+### Building blocks
+
+![Building blocks of DAS-VMUNet: a VSS block, a residual convolutional block, and a DAMamba block with Dynamic Adaptive Scan and state space modeling.](fig/modules.png)
+
+**Figure 2.** (a) VMamba VSS block; (b) residual CNN block adapted from Swin-UMamba; (c) DAMamba block.
+
+[Building blocks PDF](fig/modules.pdf).
+
+## Repository structure
+
+```text
+DAS-VMUNet/
+├── configs/
+│   ├── config_setting.py             # ISIC17 / ISIC18 configuration
+│   └── config_setting_synapse.py     # Synapse configuration
+├── datasets/
+│   └── dataset.py                   # Dataset loading and augmentation
+├── fig/                             # Architecture and building-block figures
+├── models/vmunet/
+│   ├── vmunet.py                    # Model wrapper and pretrained loading
+│   ├── vmamba.py                    # VSS encoder and convolutional decoder
+│   ├── damamba_skip.py              # DAMamba skip adapter
+│   └── damamba_original/            # Vendored DAMamba and CUDA extensions
+├── pre_trained_weights/             # Place the VMamba-S checkpoint here
+├── results/                         # Training runs, logs, and predictions
+├── engine.py                        # ISIC training and evaluation
+├── engine_synapse.py                # Synapse training and evaluation
+├── train.py                         # ISIC entry point
+├── train_synapse.py                 # Synapse entry point
+└── utils.py                         # Losses, metrics, and utilities
+```
+
+## Installation
+
+### Main environments
+
+Follow the environment setup used by [VM-UNet](https://github.com/JCruan519/VM-UNet#0-main-environments):
+
 ```bash
-conda create -n vmunet python=3.8
-conda activate vmunet
+conda create -n das-vmunet python=3.8
+conda activate das-vmunet
 pip install torch==1.13.0 torchvision==0.14.0 torchaudio==0.13.0 --extra-index-url https://download.pytorch.org/whl/cu117
 pip install packaging
 pip install timm==0.4.12
-pip install chardet yacs termcolor
+pip install pytest chardet yacs termcolor
 pip install submitit tensorboardX
 pip install triton==2.0.0
-pip install causal_conv1d==1.0.0  # causal_conv1d-1.0.0+cu118torch1.13cxx11abiFALSE-cp38-cp38-linux_x86_64.whl
-pip install mamba_ssm==1.0.1  # mmamba_ssm-1.0.1+cu118torch1.13cxx11abiFALSE-cp38-cp38-linux_x86_64.whl
+pip install causal_conv1d==1.0.0
+pip install mamba_ssm==1.0.1
 pip install scikit-learn matplotlib thop h5py SimpleITK scikit-image medpy yacs
+pip install einops numpy scipy pillow ninja wheel
 ```
-The .whl files of causal_conv1d and mamba_ssm could be found here. {[Baidu](https://pan.baidu.com/s/1Tibn8Xh4FMwj0ths8Ufazw?pwd=uu5k) or [GoogleDrive](https://drive.google.com/drive/folders/1ZJjc7sdyd-6KfI7c8R6rDN8bcTz3QkCx?usp=sharing)}
 
-## 1. Prepare the dataset
+VM-UNet provides compatible wheels via [Baidu](https://pan.baidu.com/s/1Tibn8Xh4FMwj0ths8Ufazw?pwd=uu5k) or [Google Drive](https://drive.google.com/drive/folders/1ZJjc7sdyd-6KfI7c8R6rDN8bcTz3QkCx?usp=sharing). Match the wheel to your Python, PyTorch, CUDA, and platform.
 
-### ISIC datasets
-- The ISIC17 and ISIC18 datasets, divided into a 7:3 ratio, can be found here {[Baidu](https://pan.baidu.com/s/1Y0YupaH21yDN5uldl7IcZA?pwd=dybm)}. 
+Run all commands from the repository root with the environment activated. Extension builds require CUDA-enabled PyTorch and the CUDA Toolkit (`nvcc`).
 
-- After downloading the datasets, you are supposed to put them into './data/isic17/' and './data/isic18/', and the file format reference is as follows. (take the ISIC17 dataset as an example.)
+### Build the DAMamba extensions
 
-- './data/isic17/'
-  - train
-    - images
-      - .png
-    - masks
-      - .png
-  - val
-    - images
-      - .png
-    - masks
-      - .png
-
-### Synapse datasets
-
-- For the Synapse dataset, you could follow [Swin-UNet](https://github.com/HuCaoFighting/Swin-Unet) to download the dataset, or you could download them from {[Baidu](https://pan.baidu.com/s/1JCXBfRL9y1cjfJUKtbEhiQ?pwd=9jti)}.
-
-- After downloading the datasets, you are supposed to put them into './data/Synapse/', and the file format reference is as follows.
-
-- './data/Synapse/'
-  - lists
-    - list_Synapse
-      - all.lst
-      - test_vol.txt
-      - train.txt
-  - test_vol_h5
-    - casexxxx.npy.h5
-  - train_npz
-    - casexxxx_slicexxx.npz
-
-## 2. Prepare the pre_trained weights
-
-- The weights of the pre-trained VMamba could be downloaded from [Baidu](https://pan.baidu.com/s/1ci_YvPPEiUT2bIIK5x8Igw?pwd=wnyy) or [GoogleDrive](https://drive.google.com/drive/folders/1ZJjc7sdyd-6KfI7c8R6rDN8bcTz3QkCx?usp=sharing). After that, the pre-trained weights should be stored in './pretrained_weights/'.
-
-
-
-## 3. Train the VM-UNet
 ```bash
-cd VM-UNet
-python train.py  # Train and test VM-UNet on the ISIC17 or ISIC18 dataset.
-python train_synapse.py  # Train and test VM-UNet on the Synapse dataset.
+python -m pip install --no-build-isolation --no-deps ./models/vmunet/damamba_original/selective_scan
+python -m pip install --no-build-isolation --no-deps ./models/vmunet/damamba_original/ops_dcnv3
 ```
 
-### Swin-VMUNet-DASkip on Synapse
+## Data preparation
 
-`configs/config_setting_synapse.py` uses the same CNN decoder, deep supervision
-weights (`[1.0, 0.5, 0.25, 0.125]`), and encoder freeze period (10 epochs) as
-the ISIC configuration. The encoder is unfrozen at epoch 11. Set
-`model_config['deep_supervision'] = False` to train only the final output, or
-`freeze_epochs = 0` to train the encoder from the beginning.
+Use the datasets and splits provided by the [VM-UNet authors](https://github.com/JCruan519/VM-UNet#1-prepare-the-dataset). Place them under `data/` as shown below.
 
-Synapse keeps its nine-class CE + Dice loss and volume Dice/HD95 evaluation.
-Auxiliary losses are summed with the configured weights in both AMP and normal
-training; evaluation uses only the final output. TensorBoard loss logs are
-written to the run's `summary` directory.
+### ISIC17 and ISIC18
 
-To resume an earlier run, set `resume_path` to its `checkpoints/latest.pth`.
-The checkpoint restores the model, optimizer, scheduler, epoch, and AMP scaler
-when available. For test-only execution, set `only_test_and_save_figs = True`,
-point `best_ckpt_path` to a saved weights file, and set `img_save_path`;
-predicted volumes are written under its `outputs` directory.
+Train/test splits: **1,500/650** for ISIC17 and **1,886/808** for ISIC18. Store held-out pairs in `val/`.
 
-The existing Synapse protocol still selects `best.pth` by training loss and
-reports Dice/HD95 on `test_vol` at `val_interval`. These test metrics are not
-used to select the checkpoint. Selection by validation metrics requires a
-separate validation split.
+```text
+data/
+├── isic2017/
+│   ├── train/
+│   │   ├── images/
+│   │   └── masks/
+│   └── val/
+│       ├── images/
+│       └── masks/
+└── isic2018/
+    ├── train/
+    │   ├── images/
+    │   └── masks/
+    └── val/
+        ├── images/
+        └── masks/
+```
 
-**NOTE**: If you want to use the trained checkpoint for inference testing only and save the corresponding test images, you can follow these steps:  
+Match images and masks by sorted filename order; use grayscale masks with values 0/255.
 
-- **In `config_setting`**:  
-   - Set the parameter `only_test_and_save_figs` to `True`.  
-   - Fill in the path of the trained checkpoint in `best_ckpt_path`.  
-   - Specify the save path for test images in `img_save_path`.  
+Select `'isic17'` or `'isic18'` in `configs/config_setting.py`. Default paths are `./data/isic2017/` and `./data/isic2018/`; retain the trailing slash when changing them.
 
-- **Execute the script**:  
-   After setting the above parameters, you can run `train.py`.
+### Synapse
 
-## 4. Obtain the outputs
-- After trianing, you could obtain the results in './results/'
+Synapse: **18 training / 12 test volumes**, with nine classes including background.
 
-## 5. Trained VM-UNet Checkpoint
+```text
+data/Synapse/
+├── train_npz/
+│   └── caseXXXX_sliceXXX.npz
+├── test_vol_h5/
+│   └── caseXXXX.npy.h5
+└── lists/
+    └── lists_Synapse/
+        ├── train.txt
+        └── test_vol.txt
+```
 
-- You can also obtain our trained VM-UNet on ISIC17, ISIC18 and Synapse from [Baidu Netdisk](https://pan.baidu.com/s/1lygUOFo6fMF_wS_dskwpBQ?pwd=5z00) or [GoogleDrive](https://drive.google.com/drive/folders/1ZJjc7sdyd-6KfI7c8R6rDN8bcTz3QkCx?usp=sharing).
+Both formats contain `image` and `label` arrays. List sample IDs without extensions in the split files.
 
-## 6. Acknowledgments
+Default paths in `configs/config_setting_synapse.py`:
 
-- We thank the authors of [VMamba](https://github.com/MzeroMiko/VMamba) and [Swin-UNet](https://github.com/HuCaoFighting/Swin-Unet) for their open-source codes.
+```python
+data_path = './data/Synapse/train_npz/'
+volume_path = './data/Synapse/test_vol_h5/'
+list_dir = './data/Synapse/lists/lists_Synapse/'
+```
 
+## Pretrained encoder
+
+Download VMamba-S weights from the [VM-UNet authors](https://github.com/JCruan519/VM-UNet#2-prepare-the-pre_trained-weights) and place `vmamba_small_e238_ema.pth` in `pre_trained_weights/`.
+
+Default in both configurations:
+
+```python
+model_config = {
+    # Keep the remaining model configuration fields.
+    'load_ckpt_path': './pre_trained_weights/vmamba_small_e238_ema.pth',
+}
+```
+
+The checkpoint must contain a `model` dictionary for encoder initialization.
+
+## Training
+
+After preparing data and weights, run:
+
+```bash
+# ISIC17 or ISIC18, selected in configs/config_setting.py
+python train.py
+
+# Synapse
+python train_synapse.py
+```
+
+### Outputs and checkpoint selection
+
+Runs are saved under `work_dir` (default: `results/`):
+
+```text
+results/<run_name>/
+├── checkpoints/
+│   ├── latest.pth
+│   └── best-epoch*.pth
+├── log/
+├── summary/
+└── outputs/
+```
+
+Selected weights are saved as `best.pth` and renamed to `best-epoch*.pth` after evaluation.
+
+Checkpoint selection uses held-out loss for ISIC and training loss for Synapse. Synapse test metrics are logged every `val_interval` epochs and do not select the checkpoint.
+
+### Resume training
+
+For Synapse, set `resume_path` to `checkpoints/latest.pth` from the previous run. For ISIC, reuse that run's `work_dir`.
+
+`latest.pth` restores training state, including the AMP scaler for Synapse when available.
+
+## Evaluation and prediction export
+
+Set these fields in the dataset configuration:
+
+```python
+only_test_and_save_figs = True
+best_ckpt_path = '/path/to/best-epochXXX.pth'
+img_save_path = './prediction_results/'
+```
+
+Run:
+
+```bash
+python train.py          # ISIC17 / ISIC18
+python train_synapse.py  # Synapse
+```
+
+Use `best-epoch*.pth` for evaluation, not `latest.pth`. Keep dataset paths available. Synapse exports NIfTI predictions; ISIC uses a default threshold of `0.5`.
+
+## Acknowledgments
+
+Built on [VM-UNet](https://github.com/JCruan519/VM-UNet), [VMamba](https://github.com/MzeroMiko/VMamba), [Swin-UMamba](https://github.com/JiarunLiu/Swin-UMamba), and [DAMamba](https://github.com/ltzovo/DAMamba). We thank their authors for the code and pretrained weights.
 

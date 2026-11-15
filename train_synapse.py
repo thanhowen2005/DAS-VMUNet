@@ -97,10 +97,8 @@ def main(config):
             num_classes=model_cfg['num_classes'],
             input_channels=model_cfg['input_channels'],
             depths=model_cfg['depths'],
-            depths_decoder=model_cfg['depths_decoder'],
             drop_path_rate=model_cfg['drop_path_rate'],
             load_ckpt_path=model_cfg['load_ckpt_path'],
-            decoder_type=model_cfg.get('decoder_type', 'cnn'),
             deep_supervision=model_cfg.get('deep_supervision', True),
         )
         model.load_from()
@@ -180,13 +178,13 @@ def main(config):
     freeze_epochs = getattr(config, 'freeze_epochs', 0)
     if freeze_epochs > 0 and start_epoch <= freeze_epochs:
         raw_model.freeze_encoder()
-        logger.info(f'[Swin-VMUNet] Freezing encoder for epochs 1 to {freeze_epochs}')
+        logger.info(f'[DAS-VMUNet] Freezing encoder for epochs 1 to {freeze_epochs}')
 
     for epoch in range(start_epoch, config.epochs + 1):
 
         if freeze_epochs > 0 and epoch == freeze_epochs + 1:
             raw_model.unfreeze_encoder()
-            logger.info(f'[Swin-VMUNet] Epoch {epoch}: unfreezing encoder')
+            logger.info(f'[DAS-VMUNet] Epoch {epoch}: unfreezing encoder')
 
         torch.cuda.empty_cache()
         train_sampler.set_epoch(epoch) if config.distributed else None

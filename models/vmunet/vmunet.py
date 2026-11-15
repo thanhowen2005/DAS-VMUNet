@@ -8,10 +8,8 @@ class VMUNet(nn.Module):
                  input_channels=3, 
                  num_classes=1,
                  depths=[2, 2, 9, 2], 
-                 depths_decoder=[2, 9, 2, 2],
                  drop_path_rate=0.2,
                  load_ckpt_path=None,
-                 decoder_type='cnn',
                  deep_supervision=True,
                 ):
         super().__init__()
@@ -23,9 +21,7 @@ class VMUNet(nn.Module):
             in_chans=input_channels,
             num_classes=num_classes,
             depths=depths,
-            depths_decoder=depths_decoder,
             drop_path_rate=drop_path_rate,
-            decoder_type=decoder_type,
             deep_supervision=deep_supervision,
         )
     
@@ -66,4 +62,4 @@ class VMUNet(nn.Module):
 
             not_loaded_keys = [k for k in pretrained_dict.keys() if k not in new_dict.keys()]
             print('Not loaded keys count:', len(not_loaded_keys))
-            print(">>> [Swin-VMUNet] ImageNet Pretrained Encoder successfully loaded finished!")
+            print(">>> [DAS-VMUNet] ImageNet Pretrained Encoder successfully loaded finished!")

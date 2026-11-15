@@ -12,31 +12,29 @@ class setting_config:
     model_config = {
         'num_classes': 1, 
         'input_channels': 3, 
-        # ----- Swin-VMUNet (Inspired by Swin-UMamba) ----- #
+        # ----- DAS-VMUNet ----- #
         'depths': [2, 2, 2, 2],
-        'depths_decoder': [2, 2, 2, 1],
         'drop_path_rate': 0.2,
-        'load_ckpt_path': '../../downloads/pre_trained_weights/vmamba_small_e238_ema.pth',
-        'decoder_type': 'cnn',       # 'cnn' (Swin-UMamba standard) or 'mamba' (Swin-UMamba†)
+        'load_ckpt_path': './pre_trained_weights/vmamba_small_e238_ema.pth',
         'deep_supervision': True,    # Multi-scale auxiliary supervision
     }
 
-    # ----- Swin-VMUNet Training Enhancements ----- #
+    # ----- DAS-VMUNet Training Settings ----- #
     freeze_epochs = 10               # Freeze encoder during first 10 epochs (set 0 to disable)
     deep_supervision = True
     deep_supervision_weights = [1.0, 0.5, 0.25, 0.125]
 
     datasets = 'isic18' 
     if datasets == 'isic18':
-        data_path = '../../data/isic2018/'
+        data_path = './data/isic2018/'
     elif datasets == 'isic17':
-        data_path = '../../data/isic2017/'
+        data_path = './data/isic2017/'
     else:
         raise Exception('datasets in not right!')
 
     criterion = BceDiceLoss(wb=1, wd=1)
 
-    pretrained_path = './pre_trained/'
+    pretrained_path = model_config['load_ckpt_path']  # Encoder checkpoint.
     num_classes = 1
     input_size_h = 256
     input_size_w = 256

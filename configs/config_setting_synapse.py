@@ -12,12 +12,10 @@ class setting_config:
     model_config = {
         'num_classes': 9, 
         'input_channels': 3, 
-        # ----- Swin-VMUNet with DAMamba skip connections ----- #
+        # ----- DAS-VMUNet with DAMamba skip connections ----- #
         'depths': [2,2,2,2],
-        'depths_decoder': [2,2,2,1],
         'drop_path_rate': 0.2,
         'load_ckpt_path': './pre_trained_weights/vmamba_small_e238_ema.pth',
-        'decoder_type': 'cnn',
         'deep_supervision': True,
     }
     freeze_epochs = 10
@@ -28,14 +26,14 @@ class setting_config:
     input_size_h = 224
     input_size_w = 224
     if datasets_name == 'synapse':
-        data_path = '../../data/Synapse/train_npz/'
+        data_path = './data/Synapse/train_npz/'
         datasets = Synapse_dataset
-        list_dir = '../../data/Synapse/lists/lists_Synapse/'
-        volume_path = '../../data/Synapse/test_vol_h5/'
+        list_dir = './data/Synapse/lists/lists_Synapse/'
+        volume_path = './data/Synapse/test_vol_h5/'
     else:
         raise Exception('datasets in not right!')
     
-    pretrained_path = '' # if using pretrained, please enter the path of weights
+    pretrained_path = model_config['load_ckpt_path']  # Encoder checkpoint.
     num_classes = 9
     loss_weight = [1, 1]
     criterion = CeDiceLoss(num_classes, loss_weight)
